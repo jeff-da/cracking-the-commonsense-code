@@ -1,0 +1,9 @@
+# Ignore data directories -- these files are giant / cannot be legally shared publicly
+glove/*
+word2vec/*
+mcrae/*
+cslb/*
+wndomains/*
+subgraphs/all/*
+# Compiled files
+*.pyc

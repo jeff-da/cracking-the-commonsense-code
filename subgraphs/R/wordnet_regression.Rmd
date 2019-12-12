@@ -1,0 +1,166 @@
+---
+title: "data regression analysis"
+output: html_notebook
+---
+
+Constants
+
+```{r}
+PEARSON_FILE <- "../all/pearson_corr/corr_mcrae_wikigiga.txt"
+FILE <- "../all/hier_clust/wordnet_match_wikigiga.txt"
+```
+
+
+```{r}
+pearson <- read.table(PEARSON_FILE, sep="\t", header=TRUE)
+data <- read.table(FILE, sep="\t", header=TRUE, na.strings=c("n/a"))
+```
+
+Merge feature data from Pearson file with a particular WordNet match column.
+
+```{r}
+colnames(pearson)
+colnames(data)
+```
+
+```{r}
+new_data <- pearson
+new_data["wordnet_corr"] <- data[,c("dendrogram..0.8..wordnet..7")]
+new_data[is.na(new_data)] <- 0.0
+
+boxplot(new_data["wordnet_corr"])
+stripchart(new_data["wordnet_corr"], vertical = TRUE,
+           method = "jitter", add = TRUE, pch = 20, col = 'blue')
+title("wordnet values")
+```
+
+```{r}
+summary(new_data["wordnet_corr"])
+```
+
+
+```{r}
+new_data["wordnet_corr"] <- scale(new_data["wordnet_corr"])
+```
+
+
+Baseline regression: use frequency, etc. lexical features, but leave out taxonomy features.
+
+```{r}
+colnames(new_data)
+```
+
+```{r}
+attach(new_data)
+baseline_lm <- lm(wordnet_corr ~ log.BNC_freq. + num_feats_tax + familiarity + tot_num_feats + polysemy)
+summary(baseline_lm)
+```
+
+
+Full model, including domain features
+
+```{r}
+cn <- colnames(new_data)
+full_formula <- as.formula(paste("wordnet_corr", "~", paste(cn[c(3:70)], collapse="+")))
+full_formula
+full_lm <- lm(full_formula, data=new_data)
+summary(full_lm)
+```
+
+## Comparing models
+
+```{r}
+anova(full_lm)
+```
+
+
+```{r}
+anova(baseline_lm, full_lm)
+```
+
+## Comparing with the pearson model
+
+Let's compute the Pearson LM here and compare its weights with the weights from the WordNet LM.
+
+```{r}
+boxplot(new_data["correlation"])
+stripchart(new_data["correlation"], vertical = TRUE,
+           method = "jitter", add = TRUE, pch = 20, col = 'blue')
+title("pearson values")
+```
+
+
+```{r}
+cn <- colnames(new_data)
+new_data["correlation"] <- scale(new_data["correlation"])
+pearson_formula <- as.formula(paste("correlation", "~", paste(cn[c(3:70)], collapse="+")))
+pearson_formula
+pearson_lm <- lm(pearson_formula, data=new_data)
+summary(pearson_lm)
+```
+
+Fetch the coefficients, and slice off the baseline features:
+
+```{r}
+names(coef(pearson_lm))
+coef_names <- names(coef(pearson_lm))[-(1:6)]
+coef_names
+coefs <- data.frame(cbind(pearson=coef(pearson_lm)[-(1:6)],
+                          wordnet=coef(full_lm)[-(1:6)]))
+```
+
+Extra information: get the counts for each domain.
+
+```{r}
+domain_cols <- c(-(1:7),-71)
+colnames(new_data)[domain_cols]
+domainSizes <- colSums(new_data[domain_cols])
+domainSizes
+```
+
+Filter out low-count domains.
+
+```{r}
+isRobustDomain <- function(d) {
+  return (d > 2)
+}
+robust_coef_names <- names(Filter(isRobustDomain, domainSizes))
+robust_coefs <- coefs[robust_coef_names,]
+```
+
+
+
+```{r}
+plot(robust_coefs)
+text(robust_coefs, labels=robust_coef_names)
+title("Pearson and WN weights, matched by domain")
+abline(lm(robust_coefs$wordnet ~ robust_coefs$pearson))
+```
+
+Correlation:
+
+```{r}
+cor(robust_coefs)
+```
+
+Rank correlation:
+
+```{r}
+coef_ranks <- data.frame(apply(robust_coefs, 2, rank))
+coef_ranks
+```
+
+```{r}
+plot(coef_ranks)
+text(coef_ranks, labels=robust_coef_names)
+title("Pearson and WN weight ranks")
+segments(x0=0,y0=0, x1=65,y1=65, col="gray")
+abline(lm(coef_ranks$wordnet ~ coef_ranks$pearson))
+```
+
+
+
+```{r}
+cor(robust_coefs, method="spearman")
+```
+
